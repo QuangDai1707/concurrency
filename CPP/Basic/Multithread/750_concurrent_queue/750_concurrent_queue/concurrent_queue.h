@@ -6,6 +6,7 @@
 
 #include <queue>
 #include <mutex>
+#include <stdexcept>
 
 // Exception types for when queue is empty or full
 class concurrent_queue_empty : public std::runtime_error {

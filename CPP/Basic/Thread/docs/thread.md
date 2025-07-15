@@ -554,3 +554,138 @@ void process() {
         std::cout << "Done\n";
     }
     ```
+
+## 8.3. Semaphore
+- has a counter
+- acquire()
+    - decrements the counter
+- release()
+    - increments the counter
+- the counter can be zero
+    - acquire() will block until the counter becomes positive again
+    ```c
+    class Semaphore {
+    private:
+        std::mutex mtx;
+        std::condition_variable cv;
+        int counter{0};
+    public:
+        void release() {
+            std::lock_guard<std::mutex> lock(mtx);
+            std::cout << "Adding one item" << std::endl;
+
+            ++counter;
+            count();	
+
+            cv.notify_all();
+        }
+
+        void acquire() {
+            std::unique_lock<std::mutex> lock(mtx);
+            std::cout << "Removing one item" << std::endl;
+
+            while (counter == 0) {
+                cv.wait(lock);
+            }
+
+            --counter;
+            count();
+        }
+
+        void count() const {
+            std::cout << "Value of counter: ";
+            std::cout << counter << std::endl;
+        }
+    };
+    ```
+- binary semphore as mutex
+    - the counter can only have 2 values 0 and 1
+    - used for mutex
+    - to "lock" it, call acquire()
+    - to "unlock" it, call release() in the same thread so other threads can acquire the lock
+- binary as CV
+    - also used for signalling: can be used as a replacement for cv
+    - to wait for a signal, a threads acquire()
+        - counter -> 0, thread waits for another thread to increment it
+    - to notify a waiting thread, call release()
+        - count -> 1, the waiting thread can now continue
+    - to notify multiple threads, use a suitable value for max_count
+- Advantages
+    - more flexible: can notify any given number of waiting threads
+    - simpler code: avoids working with mutexes and cv
+    - performance: can often be faster
+    - more versatile: can be used to create more complex synchronization objects     
+
+## 8.3. concurrent queue
+- add 2 condition variables for efficiently wait the queue in case of push when queue full or pop when queue empty
+    ```c
+    void push(const T& value) {
+        std::unique_lock<std::mutex> lock(mut);
+        not_full.wait(lock, [this] { return que.size() < max_size; });
+
+        que.push(value);
+        not_empty.notify_one();
+    }
+    void pop(T& value) {
+        std::unique_lock<std::mutex> lock(mut);
+        not_empty.wait(lock, [this] { return !que.empty(); });
+
+        value = std::move(que.front());
+        que.pop();
+        not_full.notify_one();
+    }
+    ```
+## 8.4. Thread pool
+- motivations: create thread requires a lot of work
+    - create an execution stack for the thread
+    - call a system api
+    - the os creates internal data to manage the thread
+    - the scheduler executes the thread
+    - a context switch occurs to run the thread
+- we want to make full use of all our processor cores
+- every core should be running one of our threads except for main() and the os
+- difficult to achieve with std::async()
+    - need to keep track of the number of threads created
+- thread pool structure
+    - container of C++ thread objects
+        - has a fixed size
+        - usually match to the number of core on machine (std::thread::hardware_concurrency()) subtract 2 (main thread + OS)
+    - a queue of tasks
+        - a thread takes a task off the queue
+        - it performs the task
+        - then it takes the next task from the queue
+    - tasks represented as callable objects
+- advantages
+    - no scaling concerns
+        - the thread pool will automatically use all the available cores
+    - make efficient use of resource
+        - threads are always busy
+        - provided there is work for them to do
+    - works best with short, simple tasks where
+        - the time taken to create a thread causes a significant delay
+        - the task doesn't block 
+- disadvantages
+    - requires a concurrent queue or similar
+    - overhead: must add and remove task functions in thread-safe way
+- thread pool implementation
+    - thread pool class will contain
+        - a vector of std::thread objects
+        - a concurrent queue to store incoming tasks as callable objects
+    - each thread will execute as an infinite loop
+        - call pop() on the queue
+        - invoke the task return by pop()
+        - call pop() on the queue again
+        - ...
+- thread pool with multiple queues
+    - the queue can become a bottle-neck
+        - when a thread takes a task off the queue, it locks the queue
+        - other threads are blocked until this operation is complete
+        - if there are many small tasks, this can affect performance
+    - an alternative is to use a separate queue for each thread
+        - a thread never has to wait to get its next task
+        - use more memory
+    - if the queue is empty, the thread is idle
+    - replace the queue by a fixed-size vector of queues (= number of threads)
+    - "round-robin" scheduling
+        - put a new task on the next thead's queue
+        - after the last element of the vecotr, go to the front element

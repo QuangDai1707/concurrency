@@ -1,12 +1,13 @@
 // Test program for simple concurrent queue
-#include "concurrent_queue.h"
+#include "con_queue.h"
 #include <iostream>
 #include <future>
 #include <string>
 #include <thread>
 
 // Shared queue object
-concurrent_queue<std::string> conc_que;
+// concurrent_queue<std::string> conc_que;
+concurrent_queue_cv<std::string> conc_que;
 	
 // Waiting thread
 void reader() {
@@ -25,7 +26,7 @@ void reader() {
 // Modifying thread
 void writer() {
 	// Push the data onto the queue
-	for (int i = 0; i < 50; ++i) {
+	for (int i = 0; i < 51; ++i) {
 		std::string sdata = "Item " + std::to_string(i);
 		conc_que.push(sdata);
 	}
